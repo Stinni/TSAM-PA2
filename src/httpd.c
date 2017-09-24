@@ -1,7 +1,7 @@
 // HTTP Server - Programming Assignment 2 for Computer Networking
-// University of Reykjavík, autumn 2016
-// Student: Kristinn Heiðar Freysteinsson
-// Username: kristinnf13
+// University of Reykjavík, autumn 2017
+// Students: Hreiðar Ólafur Arnarsson, Kristinn Heiðar Freysteinsson & Maciej Sierzputowski
+// Usernames: hreidara14, kristinnf13 & maciej15
 
 // Constants:
 #define MAX_MESSAGE_LENGTH 1024
