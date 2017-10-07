@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
         gchar **msgSplit = g_strsplit_set(message, " \r\n", 0);
 
         GHashTable *hash = g_hash_table_new(g_str_hash, g_str_equal);
-        /* We deduct 1 from g_strv_length because we cound from 0 */
+        /* We deduct 1 from g_strv_length because we count from 0 */
         /* And we add 3 each time because there're empty strings in between each pair */
         for(unsigned int i = 4; i < g_strv_length(msgSplit) - 1; i = i + 3) {
             g_hash_table_insert(hash, msgSplit[i], msgSplit[i+1]);
