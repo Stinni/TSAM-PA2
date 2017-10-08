@@ -108,6 +108,16 @@ void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *h
     g_free(response);
 }
 
+/**
+ * This function handles method request errors and sends an error message to the client
+ * Method request errors means all requests that are not of the type GET, HEAD or POST
+ * @param
+ * @returns
+ */
+void processRequestErrors() {
+    
+}
+
 // This function is used to help with debugging. It's passed as a GHFunc to the
 // g_hash_table_foreach function and prints out each (key, value) in a hash map
 void printHashMap(gpointer key, gpointer value, gpointer user_data) {
