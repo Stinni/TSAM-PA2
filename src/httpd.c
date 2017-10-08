@@ -73,7 +73,7 @@ void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *hos
 {
     gchar *theTime = getCurrentDateTimeAsString();
     gchar *response = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
-                                  "Content-length: 0\r\nServer: StzHttp/1.0\r\nConnection: Close\r\n\r\n", NULL);
+                                  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\nConnection: Close\r\n\r\n", NULL);
     send(connfd, response, strlen(response), 0);
     logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "200");
     g_free(theTime);
@@ -86,7 +86,7 @@ void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *ho
     gchar *page = getPageString(host, reqURL, clientIP, clientPort,  NULL);
     gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
     gchar *response = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
-                                  contLength, "\r\nServer: StzHttp/1.0\r\nConnection: keep-alive\r\n\r\n", page, NULL);
+                                  contLength, "\r\nServer: TheMagicServer/1.0\r\n\r\n", page, NULL);
     send(connfd, response, strlen(response), 0);
     logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "200");
     g_free(theTime);
@@ -100,11 +100,22 @@ void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *h
     gchar *page = getPageString(host, reqURL, clientIP, clientPort, data);
     gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
     gchar *response = g_strconcat("HTTP/1.1 201 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
-                                  contLength, "\r\nServer: StzHttp/1.0\r\nConnection: keep-alive\r\n\r\n", page, NULL);
+                                  contLength, "\r\nServer: TheMagicServer/1.0\r\n\r\n", page, NULL);
     send(connfd, response, strlen(response), 0);
     logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "201");
     g_free(theTime);
     g_free(page);
+    g_free(response);
+}
+
+void processNotSupportedRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+{
+    gchar *theTime = getCurrentDateTimeAsString();
+    gchar *response = g_strconcat("HTTP/1.1 501 Not Implemented\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
+                                  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\n\r\n", NULL);
+    send(connfd, response, strlen(response), 0);
+    logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "501");
+    g_free(theTime);
     g_free(response);
 }
 
@@ -114,7 +125,8 @@ void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *h
  * @param
  * @returns
  */
-void processRequestErrors() {
+void processRequestErrors()
+{
     
 }
 
@@ -196,7 +208,7 @@ int main(int argc, char *argv[])
             processPostRequest(connfd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], msgBody);
         }
         else {
-            g_printf("Request not supported.\n");
+            processNotSupportedRequest(connfd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
         }
 
         g_free(clientIP); g_free(clientPort); g_free(hostField);
