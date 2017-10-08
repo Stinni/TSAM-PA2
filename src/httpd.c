@@ -5,10 +5,12 @@
 
 // Constants:
 #define MAX_MESSAGE_LENGTH 1024
+#define POLL_SIZE 32
 
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/select.h>
+#include <sys/poll.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
@@ -99,6 +101,13 @@ void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *h
     g_free(response);
 }
 
+// This function is used to help with debugging. It's passed as a GHFunc to the
+// g_hash_table_foreach function and prints out each (key, value) in a hash map
+void printHashMap(gpointer key, gpointer value, gpointer user_data) {
+    user_data = user_data; // To get rid of the unused param warning
+    g_printf("The key is \"%s\" and the value is \"%s\"\n", (char *)key, (char *)value);
+}
+
 int main(int argc, char *argv[])
 {
     int sockfd;
@@ -126,6 +135,10 @@ int main(int argc, char *argv[])
        welcome port. A backlog of six connections is allowed. */
     listen(sockfd, 6);
 
+    /* Setting up structs and variables needed for the poll() function */
+    struct pollfd poll_set[POLL_SIZE];
+    
+
     for (;;) {
         //Accepting a TCP connection, connfd is a handle dedicated to this connection.
         socklen_t len = (socklen_t) sizeof(client);
@@ -149,9 +162,13 @@ int main(int argc, char *argv[])
             g_hash_table_insert(hash, msgSplit[i], msgSplit[i+1]);
         }
 
-        gchar *clientIP = g_strdup_printf("%s", inet_ntoa(client.sin_addr));
+        // For debugging. Iterates through the hash map and prints out each key-value pair
+        // TODO: REMEMBER TO COMMENT OUT OR DELETE BEFORE HANDIN!
+        g_hash_table_foreach(hash, (GHFunc)printHashMap, NULL);
+
+        gchar *clientIP   = g_strdup_printf("%s", inet_ntoa(client.sin_addr));
         gchar *clientPort = g_strdup_printf("%i", (int)ntohs(client.sin_port));
-        gchar *hostField = g_strdup_printf("%s", (gchar *)g_hash_table_lookup(hash, "Host:"));
+        gchar *hostField  = g_strdup_printf("%s", (gchar *)g_hash_table_lookup(hash, "Host:"));
         gchar **hostSplit = g_strsplit_set(hostField, ":", 0);
 
         if(g_str_has_prefix(message, "HEAD")) {
