@@ -22,25 +22,28 @@
 #include <glib.h>
 #include <glib/gprintf.h>
 
-gchar *getCurrentDateTimeAsString() {
+gchar *getCurrentDateTimeAsString()
+{
     GDateTime *currTime  = g_date_time_new_now_local();
     gchar *dateAsString = g_date_time_format(currTime, "%a, %d %b %Y %H:%M:%S %Z");
     g_date_time_unref(currTime);
     return dateAsString;
 }
 
-gchar *getCurrentDateTimeAsISOString() {
+gchar *getCurrentDateTimeAsISOString()
+{
     GTimeVal theTime;
     g_get_current_time(&theTime);
     return g_time_val_to_iso8601(&theTime);
 }
 
 /* creates the page needed for GET and POST methods. Data is NULL for a GET request. */
-gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientPort, gchar *data) {
+gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientPort, gchar *data)
+{
     gchar *page;
     gchar *firstPart = g_strconcat("<!DOCTYPE html>\n<html>\n<head>\n</head>\n<body>\n<p>http://", host, reqURL,
                                    " ", clientIP, ":", clientPort, "</p>\n", NULL);
-    gchar *lastPart = g_strconcat("</body>\n", NULL);
+    gchar *lastPart = g_strconcat("</body>\n</html>\n", NULL);
     if(data != NULL) {
         page = g_strconcat(firstPart, data, "\n", lastPart, NULL);
     } else {
@@ -50,7 +53,8 @@ gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientP
     return page;
 }
 
-void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code) {
+void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code)
+{
     FILE *fp;
     fp = fopen("log.txt", "a");
     if(fp != NULL) {
@@ -65,7 +69,8 @@ void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar 
     }
 }
 
-void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL) {
+void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+{
     gchar *theTime = getCurrentDateTimeAsString();
     gchar *response = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
                                   "Content-length: 0\r\nServer: StzHttp/1.0\r\nConnection: Close\r\n\r\n", NULL);
@@ -75,7 +80,8 @@ void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *hos
     g_free(response);
 }
 
-void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL) {
+void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+{
     gchar *theTime = getCurrentDateTimeAsString();
     gchar *page = getPageString(host, reqURL, clientIP, clientPort,  NULL);
     gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
@@ -88,14 +94,15 @@ void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *ho
     g_free(response);
 }
 
-void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data) {
+void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data)
+{
     gchar *theTime = getCurrentDateTimeAsString();
     gchar *page = getPageString(host, reqURL, clientIP, clientPort, data);
     gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
-    gchar *response = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
+    gchar *response = g_strconcat("HTTP/1.1 201 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
                                   contLength, "\r\nServer: StzHttp/1.0\r\nConnection: keep-alive\r\n\r\n", page, NULL);
     send(connfd, response, strlen(response), 0);
-    logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "200");
+    logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "201");
     g_free(theTime);
     g_free(page);
     g_free(response);
@@ -110,9 +117,6 @@ void printHashMap(gpointer key, gpointer value, gpointer user_data) {
 
 int main(int argc, char *argv[])
 {
-    int sockfd;
-    struct sockaddr_in server, client;
-
 	if(argc < 2) {
 		g_printf("Format expected is .src/httpd <port_number>\n");
 		exit(EXIT_SUCCESS);
@@ -121,10 +125,11 @@ int main(int argc, char *argv[])
     gchar message[MAX_MESSAGE_LENGTH];
 
     /* Create and bind a TCP socket */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     /* Network functions need arguments in network byte order instead of
        host byte order. The macros htonl, htons convert the values. */
+    struct sockaddr_in server, client;
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(INADDR_ANY);
