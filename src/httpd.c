@@ -80,21 +80,31 @@ int main(int argc, char *argv[])
 	ClientInfo clientArray[MAX_CONNECTIONS]; // This is of size MAX_CONNECTIONS for simplicity
 	memset(clientArray, 0, sizeof(clientArray));
 
-	for (;;) {
+	for(;;) {
+
+		for(int i = 1; i < numOfFds; i++) {
+			if(pollArray[i].fd == -1) {
+				for(int j = i; j < numOfFds; j++) {
+					pollArray[j].fd     = pollArray[j+1].fd;
+					clientArray[j].ip   = clientArray[j+1].ip;
+					clientArray[j].port = clientArray[j+1].port;
+				}
+				numOfFds--;
+			}
+		}
 
 		// poll() function is used to monitor a set of file descriptors
 		int r = poll(pollArray, numOfFds, TIMEOUT);
 
-		if (r < 0) { // This means that the poll() function has encountered an error
+		if(r < 0) { // This means that the poll() function has encountered an error
 			// If the errno is EINTR (interrupt/signal recieved) we go to the start of the for loop again.
-			if (errno == EINTR) continue;
+			if(errno == EINTR) continue;
 			// Not interrupted and nothing we can do. Break for loop and exit the program.
 			perror("poll()");
 			break;
 		}
 		if(r == 0) { // This means that the poll() function timed out
 			if(numOfFds > 1) {
-				g_printf("The poll() function is timing out and there's at least 1 persistent connection.\n");
 				for(int i = 1; i < numOfFds; i++) { /* Close all persistent connections. */
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
@@ -110,12 +120,13 @@ int main(int argc, char *argv[])
 		// We've got past the errors and timeouts. So it's either a new
 		// connection or activity on one of the open connections.
 		for(int i = 0; i < numOfFds; i++) {
+
 			// Were there any events for this socket?
 			if(!pollArray[i].revents) continue;
 			// Is there activity on our listening socket?
-			if (!i) { 
+			if(!i) {
 				// We check if it's a new connection and if we can accept more connections
-				if (pollArray[0].revents & POLLIN && numOfFds < MAX_CONNECTIONS) {
+				if(pollArray[0].revents & POLLIN && numOfFds < MAX_CONNECTIONS) {
 					// Accepting a TCP connection, pollArray[x].fd is a handle dedicated to this connection.
 					pollArray[numOfFds].fd     = accept(sockfd, (struct sockaddr *) &client, &len);
 					pollArray[numOfFds].events = POLLIN;
@@ -130,8 +141,17 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			// Is there incoming data on the socket?
-			if (pollArray[i].revents & POLLIN) {
+			if(pollArray[i].revents & POLLIN) {
 				ssize_t n = recv(pollArray[i].fd, message, sizeof(message) - 1, 0);
+
+				// In case the recv() function failsfailure occurs, we will close the connection.
+				if(n < 0) {
+					shutdown(pollArray[i].fd, SHUT_RDWR);
+					close(pollArray[i].fd);
+					pollArray[i].fd = -1;
+					continue;
+				}
+
 				message[n] = '\0';
 
 				// This is used for initial connection tests and debugging
@@ -163,8 +183,6 @@ int main(int argc, char *argv[])
 					persistent = 1;
 				}
 
-				//g_printf("CHECK! CHECK! CHECK! - Nr. 1\n");
-
 				if(g_str_has_prefix(message, "HEAD")) {
 					sendHeadResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
 				}
@@ -188,7 +206,6 @@ int main(int argc, char *argv[])
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
 					pollArray[i].fd = -1;
-					// TODO: Add functionality that removes inactive FDs!
 				} // else it gets closed when there's a timeout
 			}
 		}
@@ -305,7 +322,6 @@ void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, g
 
 // This function is used to help with debugging. It's passed as a GHFunc to the
 // g_hash_table_foreach function and prints out each (key, value) in a hash map
-void printHashMap(gpointer key, gpointer value, gpointer user_data) {
-	user_data = user_data; // To get rid of the unused param warning
+void printHashMap(gpointer key, gpointer value, gpointer G_GNUC_UNUSED user_data) {
 	g_printf("The key is \"%s\" and the value is \"%s\"\n", (char *)key, (char *)value);
 }
