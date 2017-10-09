@@ -24,15 +24,21 @@
 #include <glib/gprintf.h>
 #include <errno.h>
 
+// A struct to keep info about the connected clients
+typedef struct {
+	char *ip;
+	int port;
+} ClientInfo;
+
 // Function declarations
 gchar *getCurrentDateTimeAsString();
 gchar *getCurrentDateTimeAsISOString();
-gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientPort, gchar *data);
-void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code);
-void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
-void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
-void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data);
-void sendNotImplementedResponce(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
+gchar *getPageString(gchar *host, gchar *reqURL, char *clientIP, gchar *clientPort, gchar *data);
+void logRecvMessage(char *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code);
+void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
+void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
+void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data);
+void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
 //void processRequestErrors();
 void printHashMap(gpointer key, gpointer value, gpointer user_data);
 
@@ -63,12 +69,16 @@ int main(int argc, char *argv[])
 	   welcome port. A backlog of six connections is allowed. */
 	listen(sockfd, 6);
 
-	/* Setting up structs and variables needed for the poll() function */
+	// Setting up structs and variables needed for the poll() function
 	struct pollfd pollArray[MAX_CONNECTIONS];
 	int numOfFds = 1;
 	memset(pollArray, 0, sizeof(pollArray));
 	pollArray[0].fd = sockfd;
 	pollArray[0].events = POLLIN;
+
+	// Setting up structs to keep info about connected clients
+	ClientInfo clientArray[MAX_CONNECTIONS]; // This is of size MAX_CONNECTIONS for simplicity
+	memset(clientArray, 0, sizeof(clientArray));
 
 	for (;;) {
 
@@ -88,7 +98,9 @@ int main(int argc, char *argv[])
 				for(int i = 1; i < numOfFds; i++) { /* Close all persistent connections. */
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
-					pollArray[i].fd = 0; // Not sure if this is needed. Better safe than sorry...
+					// Not sure if this is needed. Better safe than sorry...
+					memset(&pollArray[i], 0, sizeof(struct pollfd));
+					memset(&clientArray[i], 0, sizeof(ClientInfo));
 				}
 				numOfFds = 1;
 			}
@@ -105,9 +117,11 @@ int main(int argc, char *argv[])
 				// We check if it's a new connection and if we can accept more connections
 				if (pollArray[0].revents & POLLIN && numOfFds < MAX_CONNECTIONS) {
 					// Accepting a TCP connection, pollArray[x].fd is a handle dedicated to this connection.
-					pollArray[numOfFds].fd = accept(sockfd, (struct sockaddr *) &client, &len);
-					pollArray[numOfFds++].events = POLLIN;
-					g_printf("Accepted connection on FD nr. \"%d\"\n", pollArray[numOfFds].fd);
+					pollArray[numOfFds].fd     = accept(sockfd, (struct sockaddr *) &client, &len);
+					pollArray[numOfFds].events = POLLIN;
+					clientArray[numOfFds].ip   = inet_ntoa(client.sin_addr);
+					clientArray[numOfFds++].port = (int)ntohs(client.sin_port);
+					g_printf("Accepted connection on FD nr. \"%d\"\n", pollArray[numOfFds-1].fd);
 				}
 				else {
 					// Either an error occurred or the maximum number of connections has been reached.
@@ -121,7 +135,7 @@ int main(int argc, char *argv[])
 				message[n] = '\0';
 
 				// This is used for initial connection tests and debugging
-				// Prints out the recieved message as 
+				// Prints out the recieved message as a line of hex characters
 				/*for(unsigned int i = 0; i < n; i++) g_printf("%hhx ", message[i]);
 				g_printf("\n");*/
 
@@ -137,37 +151,34 @@ int main(int argc, char *argv[])
 				}
 
 				// For debugging. Iterates through the hash map and prints out each key-value pair
-				// TODO: REMEMBER TO COMMENT OUT OR DELETE BEFORE HANDIN!
-				g_hash_table_foreach(hash, (GHFunc)printHashMap, NULL);
+				// TODO: REMEMBER TO COMMENT OUT (OR DELETE) BEFORE HANDIN!
+				//g_hash_table_foreach(hash, (GHFunc)printHashMap, NULL);
 
-				gchar *clientIP   = g_strdup_printf("%s", inet_ntoa(client.sin_addr));
-				gchar *clientPort = g_strdup_printf("%i", (int)ntohs(client.sin_port));
+				gchar *clientPort = g_strdup_printf("%i", clientArray[i].port);
 				gchar *hostField  = g_strdup_printf("%s", (gchar *)g_hash_table_lookup(hash, "Host:"));
 				gchar **hostSplit = g_strsplit_set(hostField, ":", 0);
-				//g_printf("CHECK! CHECK! CHECK! - Nr. 1\n");
 				gchar *connField  = g_strdup_printf("%s", (gchar *)g_hash_table_lookup(hash, "Connection:"));
 				int persistent    = 0;
 				if(g_str_has_prefix(connField, "keep-alive")) {
-					g_printf("CHECK! CHECK! CHECK! - Nr. 1\n");
 					persistent = 1;
 				}
 
-				//g_printf("CHECK! CHECK! CHECK! - Nr. 2\n");
+				//g_printf("CHECK! CHECK! CHECK! - Nr. 1\n");
 
 				if(g_str_has_prefix(message, "HEAD")) {
-					sendHeadResponse(pollArray[i].fd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
+					sendHeadResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
 				}
 				else if(g_str_has_prefix(message, "GET")) {
-					processGetRequest(pollArray[i].fd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
+					processGetRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
 				}
 				else if(g_str_has_prefix(message, "POST")) {
-					processPostRequest(pollArray[i].fd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], msgBody);
+					processPostRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], msgBody);
 				}
 				else {
-					sendNotImplementedResponce(pollArray[i].fd, clientIP, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
+					sendNotImplementedResponce(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
 				}
 
-				g_free(clientIP); g_free(clientPort); g_free(hostField);
+				g_free(clientPort); g_free(hostField);
 				g_strfreev(msgSplit); g_strfreev(hostSplit);
 				g_hash_table_destroy(hash);
 				memset(message, 0, sizeof(message));
@@ -200,7 +211,7 @@ gchar *getCurrentDateTimeAsISOString()
 }
 
 /* creates the page needed for GET and POST methods. Data is NULL for a GET request. */
-gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientPort, gchar *data)
+gchar *getPageString(gchar *host, gchar *reqURL, char *clientIP, gchar *clientPort, gchar *data)
 {
 	gchar *page;
 	gchar *firstPart = g_strconcat("<!DOCTYPE html>\n<html>\n<head>\n</head>\n<body>\n<p>http://", host, reqURL,
@@ -215,7 +226,7 @@ gchar *getPageString(gchar *host, gchar *reqURL, gchar *clientIP, gchar *clientP
 	return page;
 }
 
-void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code)
+void logRecvMessage(char *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code)
 {
 	FILE *fp;
 	fp = fopen("log.txt", "a");
@@ -227,11 +238,11 @@ void logRecvMessage(gchar *clientIP, gchar *clientPort, gchar *reqMethod, gchar 
 		g_free(theTime);
 		fclose(fp);
 	} else {
-		g_printf("Error with logging! File couldn't be opened.");
+		perror("fopen()");
 	}
 }
 
-void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *response = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
@@ -242,7 +253,7 @@ void sendHeadResponse(int connfd, gchar *clientIP, gchar *clientPort, gchar *hos
 	g_free(response);
 }
 
-void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *page = getPageString(host, reqURL, clientIP, clientPort,  NULL);
@@ -256,7 +267,7 @@ void processGetRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *ho
 	g_free(response);
 }
 
-void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data)
+void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *page = getPageString(host, reqURL, clientIP, clientPort, data);
@@ -270,7 +281,7 @@ void processPostRequest(int connfd, gchar *clientIP, gchar *clientPort, gchar *h
 	g_free(response);
 }
 
-void sendNotImplementedResponce(int connfd, gchar *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *response = g_strconcat("HTTP/1.1 501 Not Implemented\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
