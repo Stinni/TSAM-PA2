@@ -1,7 +1,53 @@
-HTTP server Implementation										2017-10-08
+HTTP server Implementation										  2017-10-08
 
-						HTTP SERVER Implementation
+						HTTP SERVER IMPLEMENTATION
 
----------------------------------------------------------------------------
+----------------------------------------------------------------------------
 					    Structure of Implementation
----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+ Our implmentation of a HTTP server starts with a declaration of a few
+constants and the included libraries. We then declare a struct to keep track
+of information of connected clients. We then declare our functions.
+
+							~~~ Functions ~~~
+ We have a few functions to help us with making the server behave as it is
+supposed to.
+  a. getCurrentDateTimeAsString - date and time in custom format
+     The function gets the current date and time, custom formats it and
+	 then returns it.
+  b. getCurrentDateTimeAsISOString - date and time in ISO 8601 format
+     The function gets the current date and time, and then returns it in
+	 the ISO 8601 format.
+  c. getPageString - handles content creation
+     This function creates the content page for GET and POST requests and
+	 returns it to the caller of the function.
+  d. logRecvMessage - writes to log
+     This function writes client requests the server receives to a log file.
+	 It writes the date and time, the client's IP and port numbers, the type
+	 of request, the requested URL and the response the server gave the
+	 client.
+  e. sendHeadResponse - handles HEAD requests
+     This function structures a response if a client sends a HEAD request
+	 and then sends the response to the client.
+  f. processGetRequest - handles GET requests
+     This function structures a response if a client sends a GET request
+	 and then sends the response to the client.
+  g. processPostRequest - handles POST requests
+     This function structures a response if a client sends a POST request
+	 and then sends the response to the client.
+  h. sendNotImplementedResponse - handles unhandled requests
+	 If the request is not HEAD, GET or POST this function is called. It
+	 creates a '501 Not implmented' response and sends it back to the 
+	 client.
+  i. printHashMap - test function, not used during normal runtime
+	 This debugging function is used to print out keys and values in the
+	 hash map that stores the information about the header fields.
+
+						  ~~~ Main section ~~~
+ The main section of our program takes care of command line arguments and
+sets up the basic information and variable the server uses.
+
+
+----------------------------------------------------------------------------
+					    	Handling fairness
+----------------------------------------------------------------------------
