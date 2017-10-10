@@ -4,9 +4,9 @@
 // Usernames: hreidara14, kristinnf13 & maciej15
 
 // Constants:
-#define MAX_MESSAGE_LENGTH 1024
-#define MAX_CONNECTIONS 32
-#define TIMEOUT 6000 // TODO: Change to 30000 (30 seconds) before handin
+#define MAX_MESSAGE_LENGTH  1024
+#define MAX_CONNECTIONS       32
+#define TIMEOUT             6000 // TODO: Change to 30000 (30 seconds) before handin
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -37,6 +37,7 @@ gchar *getPageString(gchar *host, gchar *reqURL, char *clientIP, gchar *clientPo
 void logRecvMessage(char *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code);
 void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, int per);
 void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, int per);
+void sendNotFoundResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
 void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data, int per);
 void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
 //void processRequestErrors();
@@ -106,6 +107,7 @@ int main(int argc, char *argv[])
 		if(r == 0) { // This means that the poll() function timed out
 			if(numOfFds > 1) {
 				for(int i = 1; i < numOfFds; i++) { /* Close all persistent connections. */
+					send(pollArray[i].fd, "", 0, 0);
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
 					// Not sure if this is needed. Better safe than sorry...
@@ -128,9 +130,9 @@ int main(int argc, char *argv[])
 				// We check if it's a new connection and if we can accept more connections
 				if(pollArray[0].revents & POLLIN && numOfFds < MAX_CONNECTIONS) {
 					// Accepting a TCP connection, pollArray[x].fd is a handle dedicated to this connection.
-					pollArray[numOfFds].fd     = accept(sockfd, (struct sockaddr *) &client, &len);
-					pollArray[numOfFds].events = POLLIN;
-					clientArray[numOfFds].ip   = inet_ntoa(client.sin_addr);
+					pollArray[numOfFds].fd       = accept(sockfd, (struct sockaddr *) &client, &len);
+					pollArray[numOfFds].events   = POLLIN;
+					clientArray[numOfFds].ip     = inet_ntoa(client.sin_addr);
 					clientArray[numOfFds++].port = (int)ntohs(client.sin_port);
 				}
 				else {
@@ -143,8 +145,10 @@ int main(int argc, char *argv[])
 			if(pollArray[i].revents & POLLIN) {
 				ssize_t n = recv(pollArray[i].fd, message, sizeof(message) - 1, 0);
 
-				// In case the recv() function fails, we close the connection.
-				if(n < 0) {
+				// In case the recv() function fails (n<0), we close the connection.
+				// And if (n=0) the client has closed the connection, we do the same.
+				if(n <= 0) {
+					send(pollArray[i].fd, "", 0, 0);
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
 					pollArray[i].fd = -1;
@@ -158,16 +162,18 @@ int main(int argc, char *argv[])
 				/*for(unsigned int i = 0; i < n; i++) g_printf("%hhx ", message[i]);
 				g_printf("\n");*/
 
-				gchar *httpVersion = g_strrstr(message, "HTTP");
 				gchar *msgBody     = g_strrstr(message, "\r\n\r\n\0");
-				gchar **msgSplit   = g_strsplit_set(message, " \r\n", 0);
 				msgBody[0] = 0; msgBody += 4;
+				gchar **msgSplit   = g_strsplit_set(message, " \r\n", 0);
+				gchar *httpVersion = g_strrstr(message, "HTTP");
 
 				GHashTable *hash = g_hash_table_new(g_str_hash, g_str_equal);
 				/* We deduct 1 from g_strv_length because we count from 0 */
 				/* And we add 3 each time because there're empty strings in between each pair */
-				for(unsigned int i = 4; i < g_strv_length(msgSplit) - 1; i = i + 3) {
-					g_hash_table_insert(hash, msgSplit[i], msgSplit[i+1]);
+				if(msgSplit != NULL) {
+					for(unsigned int q = 4; q < g_strv_length(msgSplit) - 1; q += 3) {
+						g_hash_table_insert(hash, msgSplit[q], msgSplit[q+1]);
+					}
 				}
 
 				// For debugging. Iterates through the hash map and prints out each key-value pair
@@ -191,16 +197,26 @@ int main(int argc, char *argv[])
 				}
 
 				if(g_str_has_prefix(message, "HEAD")) {
-					sendHeadResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], persistent);
+					sendHeadResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
+									 msgSplit[1], persistent);
 				}
 				else if(g_str_has_prefix(message, "GET")) {
-					processGetRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], persistent);
+					if(g_str_has_prefix(msgSplit[1], "/") || g_str_has_prefix(msgSplit[1], "/index.html")) {
+						processGetRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
+										  msgSplit[1], persistent);
+					}
+					else {
+						sendNotFoundResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
+											 msgSplit[1]);
+					}
 				}
 				else if(g_str_has_prefix(message, "POST")) {
-					processPostRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1], msgBody, persistent);
+					processPostRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
+									   msgSplit[1], msgBody, persistent);
 				}
 				else {
-					sendNotImplementedResponce(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0], msgSplit[1]);
+					sendNotImplementedResponce(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0],
+											   msgSplit[0], msgSplit[1]);
 				}
 
 				g_free(clientPort); g_free(hostField);
@@ -210,6 +226,7 @@ int main(int argc, char *argv[])
 
 				// If it's not a persistent connection, we close it right here
 				if(!persistent) {
+					send(pollArray[i].fd, "", 0, 0);
 					shutdown(pollArray[i].fd, SHUT_RDWR);
 					close(pollArray[i].fd);
 					pollArray[i].fd = -1;
@@ -273,10 +290,10 @@ void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host
 								  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\nConnection: ", NULL);
 	gchar *response;
 	if(per) {
-		response = g_strconcat("keep-alive\r\n\r\n", NULL);
+		response = g_strconcat(firstPart, "keep-alive\r\n\r\n", NULL);
 	}
 	else {
-		response = g_strconcat("close\r\n\r\n", NULL);
+		response = g_strconcat(firstPart, "close\r\n\r\n", NULL);
 	}
 
 	send(connfd, response, strlen(response), 0);
@@ -290,33 +307,47 @@ void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *hos
 	gchar *page = getPageString(host, reqURL, clientIP, clientPort, NULL);
 	gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
 	gchar *firstPart = g_strconcat("HTTP/1.1 200 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
-								  contLength, "\r\nServer: TheMagicServer/1.0\r\n\r\n", NULL);
+								  contLength, "\r\nServer: TheMagicServer/1.0\r\nConnection: ", NULL);
 	gchar *response;
 	if(per) {
-		response = g_strconcat("keep-alive\r\n\r\n", page, NULL);
+		response = g_strconcat(firstPart, "keep-alive\r\n\r\n", page, NULL);
 	}
 	else {
-		response = g_strconcat("close\r\n\r\n", page, NULL);
+		response = g_strconcat(firstPart, "close\r\n\r\n", page, NULL);
 	}
 
 	send(connfd, response, strlen(response), 0);
 	logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "200");
-	g_free(theTime); g_free(page); g_free(firstPart); g_free(response);
+	g_free(theTime); g_free(page); g_free(contLength); g_free(firstPart); g_free(response);
 }
 
+void sendNotFoundResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
+{
+	gchar *theTime = getCurrentDateTimeAsString();
+	gchar *response = g_strconcat("HTTP/1.1 404 Not Found\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
+								  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\nConnection: close\r\n\r\n", NULL);
+
+	send(connfd, response, strlen(response), 0);
+	logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "404");
+	g_free(theTime); g_free(response);
+}
+
+/**
+ * 
+ */
 void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data, int per)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *page = getPageString(host, reqURL, clientIP, clientPort, data);
 	gchar *contLength = g_strdup_printf("%i", (int)strlen(page));
 	gchar *firstPart = g_strconcat("HTTP/1.1 201 OK\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\nContent-length: ",
-								  contLength, "\r\nServer: TheMagicServer/1.0\r\n\r\n", NULL);
+								  contLength, "\r\nServer: TheMagicServer/1.0\r\nConnection: ", NULL);
 	gchar *response;
 	if(per) {
-		response = g_strconcat("keep-alive\r\n\r\n", page, NULL);
+		response = g_strconcat(firstPart, "keep-alive\r\n\r\n", page, NULL);
 	}
 	else {
-		response = g_strconcat("close\r\n\r\n", page, NULL);
+		response = g_strconcat(firstPart, "close\r\n\r\n", page, NULL);
 	}
 
 	send(connfd, response, strlen(response), 0);
@@ -324,27 +355,19 @@ void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *ho
 	g_free(theTime); g_free(page); g_free(firstPart); g_free(response);
 }
 
+/**
+ * This function handles requests that are not implemented, i.e. NOT of the type GET, HEAD or POST
+ */
 void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
 	gchar *response = g_strconcat("HTTP/1.1 501 Not Implemented\r\nDate: ", theTime, "\r\nContent-Type: text/html\r\n",
-								  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\n\r\n", NULL);
+								  "Content-length: 0\r\nServer: TheMagicServer/1.0\r\nConnection: close\r\n\r\n", NULL);
 	send(connfd, response, strlen(response), 0);
 	logRecvMessage(clientIP, clientPort, reqMethod, host, reqURL, "501");
 	g_free(theTime);
 	g_free(response);
 }
-
-/**
- * This function handles method request errors and sends an error message to the client
- * Method request errors means all requests that are not of the type GET, HEAD or POST
- * @param
- * @returns
- */
-/*void processRequestErrors()
-{
-	
-}*/
 
 // This function is used to help with debugging. It's passed as a GHFunc to the
 // g_hash_table_foreach function and prints out each (key, value) in a hash map
