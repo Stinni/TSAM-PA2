@@ -5,8 +5,9 @@
 
 // Constants:
 #define MAX_MESSAGE_LENGTH  1024
-#define MAX_CONNECTIONS       32
-#define TIMEOUT             6000 // TODO: Change to 30000 (30 seconds) before handin
+#define MAX_BACKLOG           10
+#define MAX_CONNECTIONS       65
+#define TIMEOUT            30000
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -67,8 +68,8 @@ int main(int argc, char *argv[])
 	bind(sockfd, (struct sockaddr *) &server, (socklen_t) sizeof(server));
 
 	/* Before the server can accept messages, it has to listen to the
-	   welcome port. A backlog of six connections is allowed. */
-	listen(sockfd, 6);
+	   welcome port. A backlog of MAX_BACKLOG connections is allowed. */
+	listen(sockfd, MAX_BACKLOG);
 
 	// Setting up structs and variables needed for the poll() function
 	struct pollfd pollArray[MAX_CONNECTIONS];
@@ -78,7 +79,8 @@ int main(int argc, char *argv[])
 	pollArray[0].events = POLLIN;
 
 	// Setting up structs to keep info about connected clients
-	ClientInfo clientArray[MAX_CONNECTIONS]; // This is of size MAX_CONNECTIONS for simplicity
+	// Note that the size of clientArray is MAX_CONNECTIONS (and not MAX_CONNECTIONS-1) for simplicity
+	ClientInfo clientArray[MAX_CONNECTIONS];
 	memset(clientArray, 0, sizeof(clientArray));
 
 	for(;;) {
@@ -155,6 +157,7 @@ int main(int argc, char *argv[])
 					continue;
 				}
 
+				// 
 				message[n] = '\0';
 
 				// This is used for initial connection tests and debugging
@@ -177,7 +180,6 @@ int main(int argc, char *argv[])
 				}
 
 				// For debugging. Iterates through the hash map and prints out each key-value pair
-				// TODO: REMEMBER TO COMMENT OUT (OR DELETE) BEFORE HANDIN!
 				//g_hash_table_foreach(hash, (GHFunc)printHashMap, NULL);
 
 				gchar *clientPort = g_strdup_printf("%i", clientArray[i].port);
@@ -196,12 +198,12 @@ int main(int argc, char *argv[])
 					persistent = 1;
 				}
 
-				if(g_str_has_prefix(message, "HEAD")) {
+				if(g_str_has_prefix(message, "HEAD")) { // Working with HEAD requests
 					sendHeadResponse(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
 									 msgSplit[1], persistent);
 				}
-				else if(g_str_has_prefix(message, "GET")) {
-					if(g_str_has_prefix(msgSplit[1], "/") || g_str_has_prefix(msgSplit[1], "/index.html")) {
+				else if(g_str_has_prefix(message, "GET")) { // Working with GET requests
+					if(!g_strcmp0(msgSplit[1], "/") || !g_strcmp0(msgSplit[1], "/index.html")) {
 						processGetRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
 										  msgSplit[1], persistent);
 					}
@@ -210,11 +212,11 @@ int main(int argc, char *argv[])
 											 msgSplit[1]);
 					}
 				}
-				else if(g_str_has_prefix(message, "POST")) {
+				else if(g_str_has_prefix(message, "POST")) { // Working with POST requests
 					processPostRequest(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0], msgSplit[0],
 									   msgSplit[1], msgBody, persistent);
 				}
-				else {
+				else { // Working with any other (Not implemented/supported) requests
 					sendNotImplementedResponce(pollArray[i].fd, clientArray[i].ip, clientPort, hostSplit[0],
 											   msgSplit[0], msgSplit[1]);
 				}
