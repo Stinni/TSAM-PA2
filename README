@@ -33,7 +33,8 @@ supposed to.
 	 This function structures a response if a client sends a GET request
 	 and then sends the response to the client.
   g. sendNotFoundResponse - handles 404 responses to GET requests
-	 This function is called if a GET request is sent for 
+	 This function is called if a GET request is sent and anything but
+	 the base URL or index.html is requested
   h. processPostRequest - handles POST requests
 	 This function structures a response if a client sends a POST request
 	 and then sends the response to the client.

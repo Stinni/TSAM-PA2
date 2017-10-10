@@ -41,7 +41,6 @@ void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *hos
 void sendNotFoundResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
 void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data, int per);
 void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL);
-//void processRequestErrors();
 void printHashMap(gpointer key, gpointer value, gpointer user_data);
 
 int main(int argc, char *argv[])
@@ -221,7 +220,7 @@ int main(int argc, char *argv[])
 											   msgSplit[0], msgSplit[1]);
 				}
 
-				g_free(clientPort); g_free(hostField);
+				g_free(clientPort); g_free(hostField); g_free(connField);
 				g_strfreev(msgSplit); g_strfreev(hostSplit);
 				g_hash_table_destroy(hash);
 				memset(message, 0, sizeof(message));
@@ -238,6 +237,10 @@ int main(int argc, char *argv[])
 	}
 }
 
+/**
+ * The function gets the current date and time, custom formats it and then returns it.
+ * It's used for the responses that're sent.
+ */
 gchar *getCurrentDateTimeAsString()
 {
 	GDateTime *currTime  = g_date_time_new_now_local();
@@ -246,6 +249,10 @@ gchar *getCurrentDateTimeAsString()
 	return dateAsString;
 }
 
+/**
+ * The function gets the current date and time, and then returns it in the ISO 8601 format.
+ * It's only used for the logging of requests
+ */
 gchar *getCurrentDateTimeAsISOString()
 {
 	GTimeVal theTime;
@@ -253,7 +260,9 @@ gchar *getCurrentDateTimeAsISOString()
 	return g_time_val_to_iso8601(&theTime);
 }
 
-/* creates the page needed for GET and POST methods. Data is NULL for a GET request. */
+/**
+ * creates the page needed for GET and POST methods. Data is NULL for a GET request.
+ */
 gchar *getPageString(gchar *host, gchar *reqURL, char *clientIP, gchar *clientPort, gchar *data)
 {
 	gchar *page;
@@ -269,6 +278,11 @@ gchar *getPageString(gchar *host, gchar *reqURL, char *clientIP, gchar *clientPo
 	return page;
 }
 
+/**
+ * This function writes client requests the server receives to a log file.
+ * It writes the date and time, the client's IP and port numbers, the type
+ * of request, the requested URL and the response the server gave the client.
+ */
 void logRecvMessage(char *clientIP, gchar *clientPort, gchar *reqMethod, gchar *host, gchar *reqURL, gchar *code)
 {
 	FILE *fp;
@@ -285,6 +299,10 @@ void logRecvMessage(char *clientIP, gchar *clientPort, gchar *reqMethod, gchar *
 	}
 }
 
+/**
+ * This function structures a response if a client sends
+ * a HEAD request and then sends the response to the client.
+ */
 void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, int per)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
@@ -303,6 +321,10 @@ void sendHeadResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host
 	g_free(theTime); g_free(firstPart); g_free(response);
 }
 
+/**
+ * This function structures a response if a client sends
+ * a GET request and then sends the response to the client.
+ */
 void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, int per)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
@@ -323,6 +345,10 @@ void processGetRequest(int connfd, char *clientIP, gchar *clientPort, gchar *hos
 	g_free(theTime); g_free(page); g_free(contLength); g_free(firstPart); g_free(response);
 }
 
+/**
+ * This function is called if a GET request is sent and
+ * anything but the base URL or index.html is requested
+ */
 void sendNotFoundResponse(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
 	gchar *theTime = getCurrentDateTimeAsString();
@@ -335,7 +361,8 @@ void sendNotFoundResponse(int connfd, char *clientIP, gchar *clientPort, gchar *
 }
 
 /**
- * 
+ * This function handles POST requests. It simply gets a string for the page
+ * to be returned with the requested text being added into the <body> tag.
  */
 void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL, gchar *data, int per)
 {
@@ -358,7 +385,7 @@ void processPostRequest(int connfd, char *clientIP, gchar *clientPort, gchar *ho
 }
 
 /**
- * This function handles requests that are not implemented, i.e. NOT of the type GET, HEAD or POST
+ * This function handles requests that are not supported, i.e. requests NOT of type GET, HEAD or POST
  */
 void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, gchar *host, gchar *reqMethod, gchar *reqURL)
 {
@@ -371,8 +398,10 @@ void sendNotImplementedResponce(int connfd, char *clientIP, gchar *clientPort, g
 	g_free(response);
 }
 
-// This function is used to help with debugging. It's passed as a GHFunc to the
-// g_hash_table_foreach function and prints out each (key, value) in a hash map
+/**
+ * This function is used to help with debugging. It's passed as a GHFunc to the
+ * g_hash_table_foreach function and prints out each (key, value) in a hash map
+ */
 void printHashMap(gpointer key, gpointer value, gpointer G_GNUC_UNUSED user_data) {
 	g_printf("The key is \"%s\" and the value is \"%s\"\n", (char *)key, (char *)value);
 }
