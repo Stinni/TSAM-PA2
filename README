@@ -45,8 +45,31 @@ supposed to.
 
 						  ~~~ Main section ~~~
  The main section of our program takes care of command line arguments and
-sets up the basic information and variable the server uses.
-
+sets up the basic information and variable the server uses. It also handles
+all the logic of the server.
+ Here we also set up everything necessary to use poll() and allowing
+multiple clients to connect to the server. Basic information about a client 
+is stored in an array of a custom struct, ClientInfo.
+ We check on errors and timeouts when using poll(), and handle those
+instances specifically. Such as, closing any persistent connection related
+to that specific client.
+ There is also a check on if the server can accept more connections. We
+decided to have an upper limit of 32 of allowed connections, mostly to see
+how we could handle those situations and to make things easier for us for
+polling the status of the currently connected clients.
+ If there is incoming data on the server socket we take in the size of the
+data we received into a variable. If the reception of the data goes wrong 
+we close the connection.
+Otherwise we start splitting the data we received from the client into
+smaller bits that we can use. All the header fields go into a hash table,
+while the rest goes into their own variables. These are then used to by the
+program to decide what is the appropiate next step.
+ We check whether or not the connection to the client should be presistent
+by checking certain values of the request, e.g. the HTTP version and the
+contents of the Connection field if it has one. We then check what type of 
+response the client expects and call the appropiate function.
+ Finally, there is a check whether or not the connection is persistent. If
+not then the connection is closed.
 
 ----------------------------------------------------------------------------
 					    	Handling fairness
